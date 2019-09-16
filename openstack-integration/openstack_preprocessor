@@ -1,0 +1,30 @@
+#!/bin/sh 
+
+ENFORCERD_CONF_IN="/etc/enforcerd.conf.in"
+ENFORCERD_CONF_OUT="/etc/enforcerd.conf"
+TAG_PREPEND="openstack:"
+
+# OpenStack tags
+# uuid availability_zone hostname launch_index devices project_id name
+
+main() {
+  [[ $ENFORCERD_CONF_IN ]] || { err "Required env var ENFORCERD_CONF_IN not set"; return 2; }
+  [[ $ENFORCERD_CONF_OUT ]] || { err "Required env var ENFORCERD_CONF_OUT not set"; return 2; }
+  [ -f $ENFORCERD_CONF_IN ] || { err "File $ENFORCERD_CONF_IN not found"; return 2; }
+
+  local data=$(curl -s -D "/dev/stderr" http://169.254.169.254/openstack/2018-08-27/meta_data.json)
+  # local data=$(<data.json)
+
+  local tags=""
+  [[ $data ]] ||  { err "Failed to get metadata from openstack"; return 3; }
+  tags+=" --tag ${TAG_PREPEND}availability_zone=$(echo $data | jq -r '.availability_zone') "
+  tags+=" --tag ${TAG_PREPEND}project_id=$(echo $data | jq -r '.project_id') "
+  tags+="--tag ${TAG_PREPEND}name=$(echo $data | jq -r '.name') "
+  ENFORCERD_OPTS=$tags
+  cat $ENFORCERD_CONF_IN > $ENFORCERD_CONF_OUT || { err "Write failure"; return 3; }
+  echo "ENFORCERD_OPTS=\"$tags\"" >> $ENFORCERD_CONF_OUT || { err "Write failure"; return 3; }
+}
+
+err() { echo "$@" 1>&2; }
+
+main $@
